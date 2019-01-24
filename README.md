@@ -200,8 +200,8 @@ import java.sql.*;
 public class TestJDBCDriver {
 	public static String connectionString =
 		"jdbc:sap://zeus.hana.prod.eu-central-1.whitney.dbaas.ondemand.com:54321/?encrypt=true";
-	public static String user = "Donald";
-	public static String password = "Individual1";
+	public static String user = "MyUser";
+	public static String password = "MyPassword1";
 	public static void main(String[] argv) {
 		Connection connection = null;
 		try {
