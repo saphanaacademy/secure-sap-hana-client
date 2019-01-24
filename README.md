@@ -7,51 +7,112 @@ To make this happen, you have two options:
 -  Use the default (built-in) TLS/SSL security provider of your platform</li>
 -  Use the SAP CommonCrypto Library (SCL)</li>
 
-This blog is about the first option. It is the easiest to use and requires almost no configuration on the Microsoft Windows or Java platforms and minimal setup on macOS and Linux.
+Using the built-in provider is the easiest as it requires almost no configuration on the Microsoft Windows or Java platforms and minimal setup on macOS and Linux.
 
-In the tutorial video, we are using the SAP HANA Service from the Cloud Foundry environment. However, as this concerns client-side configuration, it works exactly the same in the Neo environment (SAP datacenter).
+In the tutorial videos, we are using the SAP HANA Service from the Cloud Foundry environment. However, as this concerns client-side configuration, it works exactly the same for the Neo environment in the SAP datacenter.
 
 For those interested in how to configure secure SAP HANA client connections for on-premise SAP HANA, just ignore the "Service" word. On the client-side, it works exactly the same.
 
-Using the built-in security providers does have some restrictions as they cannot be used for SAP HANA Client Side Encryption, for example. CSE requires SCL.
+Note that using the built-in security providers has restrictions as they cannot be used for SAP HANA Client Side Encryption, for example. 
 
-The SAP CommonCrypto Library was created by SAP to guarantee a secure compute environment regardless of the underlying platform. For on-premise SAP HANA, openSSL has been deprecated.
+The SAP CommonCrypto Library was created by SAP to guarantee a secure compute environment regardless of the underlying platform. For on-premise server-side SAP HANA, openSSL has been deprecated.
 
 ### Tutorial Video ### 
-[![Secure Client Connections](https://img.youtube.com/vi/loi28PvDZVI/0.jpg)](https://www.youtube.com/watch?v=loi28PvDZVI "Secure Client Connections")
+[![Secure Client Connections with default TLS/SSL providers](https://img.youtube.com/vi/loi28PvDZVI/0.jpg)](https://www.youtube.com/watch?v=loi28PvDZVI "Secure Client Connections")
 
+[![Secure Client Connections with SAP CommonCryptoLib](https://img.youtube.com/vi/aCbUTv6o_6Q/0.jpg)](https://www.youtube.com/watch?v=aCbUTv6o_6Q "SAP CommonCryptoLib")
 
 ### Tutorial Video Playlist ### 
 [SAP HANA Security](https://www.youtube.com/playlist?list=PLkzo92owKnVz2TJuTO9B71U7gTsG6beVJ)
 
-
-## Convert Root CA Certificate from .crt to .pem ##
-For platforms using openSSL (macOS and Linux), you will need to point the sslTrustStore parameter to the Certificate Authority (CA) root certificate. 
-You can download the certificate from the [DigiCert](https://www.digicert.com/digicert-root-certificates.htm) website. The DigiCert Global Root CA Thumbprint = A8985D3A65E5E5C4B2D7D66D40C6DD2FB19C5436
+## DigiCert Certificate Authority (CA) root certificate ##
+For the SAP CommonCryptoLib and for platforms using openSSL (macOS and Linux), you will need to have a local copy of the DigiCert Certificate Authority (CA) root certificate. 
+You can download the certificate from the [DigiCert](https://www.digicert.com/digicert-root-certificates.htm) website. 
 * [DigiCertGlobalRootCA.crt](https://dl.cacerts.digicert.com/DigiCertGlobalRootCA.crt)
+* [DigiCert Trusted Root Authority Certificates on DigiCert.com](https://www.digicert.com/digicert-root-certificates.htm) - The DigiCert Global Root CA Thumbprint = A8985D3A65E5E5C4B2D7D66D40C6DD2FB19C5436
 
-The CRT file is a binary file. You need to convert this into a PEM (text) format. The command below assumes you downloaded the file to the Downloads directory. Storing the PEM file in a .ssl directory under the user account is a convention, not a requirement. THere are no specific file permissions for the directory or file required (unlike for SSH). 
+### openSSL - covert CER into PEM ###
+The CRT file is a binary file. For use with openSSL, you need to convert this into a PEM (text) format. The command below assumes you downloaded the file to the Downloads directory. Storing the PEM file in a .ssl directory under the user account is a convention, not a requirement. THere are no specific file permissions for the directory or file required (unlike for SSH). 
 ```
 cd Downloads
 mkdir ~/.ssl
 openssl x509 -inform der -in DigiCertGlobalRootCA.crt -out ~/.ssl/DigiCertGlobalRootCA.pem
 ```
-## HDBSQL ##
-The SAP HANA Interactive Terminal is included with every SAP HANA client. 
-You can use it quickly test the connection to the SAP HANA Service. Notwithstanding its name, interactive input is a bit cumbersome but for running scripts the tool can be handy. 
-### For Microsoft Windows
-On Microsoft Windows the built-in TLS/SSL provider will be used. No need to specify provider or trust store. 
+## SAP HANA Client for HAAS ##
+The SAP HANA Client for the SAP HANA Service contains the client drivers for ODBC, JDBC, Node.js, Ruby, Python, and Go. Additionally, the HAAS client also includes the SAP CommonCrypto Library. 
+
+* [SAP HANA CLIENT FOR HAAS 1.0](https://launchpad.support.sap.com/#/softwarecenter/template/products/%20_APP=00200682500000001943&_EVENT=DISPHIER&HEADER=Y&FUNCTIONBAR=N&EVENT=TREE&NE=NAVIGATE&ENR=73555000100900002851&V=MAINT&TA=ACTUAL&PAGE=SEARCH/SAP%20HANA%20CLIENT%20FOR%20HAAS%201.0)
+
+## SAP CommonCryptoLib Configuration ##
+### SAP CommonCryptoLib - Configure Environment ###
+SAP CommonCryptoLib requires the SECUDIR environment variable to be defined plus the path to the executable and libaries. On macOS and Linux, you can define these in the logon .bash_profile script. Note that on macOS, the default installation path = /Applications/sap/hdbclient. On Linux and UNIX, this is /usr/sap/hdbclient. 
+On Windows, use System Properties (LD_LIBRARY_PATH can be omitted). 
 ```
-hdbsql -n zeus.hana.prod.eu-central-1.whitney.dbaas.ondemand.com:54321 -u system -p Initial1 -e  "SELECT VERSION FROM M_DATABASE"
+export HDBCLIENT=/usr/sap/hdbclient
+export LD_LIBRARY_PATH=$HDBCLIENT:$LD_LIBRARY_PATH
+export PATH=$HDBCLIENT:$PATH
+export SECUDIR=$HDBCLIENT
+```
+### SAP CommonCryptoLib - Create PSE ###
+Use the sapgenpse utility to create the PSE (Personal Security Environment). The name of the PSE file (-p) used here is "sapcli.pse". This is a convention for the SAP HANA client but not a requirement. To identify the PSE, the LDAP directory format is used. For testing, a simple CN can be used. For production, use a proper string, e.g. (CN = Common_Name, OU = Organizational_Unit, O = Organization, C = Country) and have the PSE signed by a Certificate Authority. Do not enter a PIN when creating the client PSE. 
+```
+sapgenpse gen_pse -p sapcli.pse "CN=DoesNotMatterForTesting"
+```
+You can verfiy the PSE content with command:
+```
+sapgenpse get_my_name -p sapcli.pse
+```
+### SAP CommonCryptoLib - import CER into PSE ###
+For  SAP CommonCryptoLib, you need to add the CA root certificate to the client PSE. 
+```
+sapgenpse maintain_pk -p sapcli.pse -a <path>/DigiCertGlobalRootCA.cer
+```
+You can verfiy the CA public key (pk)  with command:
+```
+sapgenpse maintain_pk -l -p sapcli.pse
+```
+## HDBSQL ##
+The SAP HANA Interactive Terminal is included with every SAP HANA client. You can use it quickly test the connection to the SAP HANA Service. Notwithstanding its name, interactive input is a bit cumbersome but for running scripts the tool can be handy. 
+### For Microsoft Windows
+Using hdbsql with the built-in TLS/SSL provider on Microsoft Windows. With parameter -e we encrypt the connection. No need to specify provider or trust store. 
+```
+hdbsql -n zeus.hana.prod.eu-central-1.whitney.dbaas.ondemand.com:54321 -u system -p Password1 
+-e 
+"SELECT VERSION FROM M_DATABASE"
+```
+Using hdbsql with the SAP CommonCryptoLib on Microsoft Windows. 
+```
+hdbsql -n zeus.hana.prod.eu-central-1.whitney.dbaas.ondemand.com:54321 -u system -p Password1 
+-e -sslprovider commoncrypto -ssltruststore $SECUDIR\sapcli.pse 
+"SELECT VERSION FROM M_DATABASE"
+```
+With a user store key instead of username, password. 
+```
+hdbuserstore -i set HAASKEY zeus.hana.prod.eu-central-1.whitney.dbaas.ondemand.com:21447 system
+hdbsql -U HAASKEY 
+-e -sslprovider commoncrypto -ssltruststore $SECUDIR\sapcli.pse 
+"select host from m_database"
 ```
 ### For Linux and macOS
-Make sure to include the sslprovider and ssltruststore parameters. 
+Using the default openSSL SSL provider. Note that the certificate needs to be in PEM format: 
 ```
-hdbsql -n zeus.hana.prod.eu-central-1.whitney.dbaas.ondemand.com:54321  -u system -p Initial1 -e -sslprovider openssl -ssltruststore ~/.ssl/DigiCertGlobalRootCA.pem  "SELECT VERSION FROM M_DATABASE"
+hdbsql -n zeus.hana.prod.eu-central-1.whitney.dbaas.ondemand.com:54321 -u system -p Password1 \
+-e -sslprovider openssl -ssltruststore ~/.ssl/DigiCertGlobalRootCA.pem  \
+"SELECT VERSION FROM M_DATABASE"
+```
+Using SAP CommonCryptoLib with user store key. 
+```
+hdbsql -U HAASKEY 
+-e -sslprovider commoncrypto -ssltruststore $SECUDIR/sapcli.pse 
+"SELECT VERSION FROM M_DATABASE"
 ```
 In case your client is behind a firewall, you can use the web service proxy on port 80. 
 ```
-hdbsql -n wsproxy.hana.prod.eu-central-1.whitney.dbaas.ondemand.com:80 -wsurl /service/95f8319f-bacf-4c79-ab28-76c72a4c8e71 -u system -p Initial1 -e -sslprovider openssl -ssltruststore ~/.ssl/DigiCertGlobalRootCA.pem  -proxyhost  proxy.org.corp -proxyport 8080  "SELECT VERSION FROM M_DATABASE"
+hdbsql -n wsproxy.hana.prod.eu-central-1.whitney.dbaas.ondemand.com:80 -u system -p Password1 \
+-wsurl /service/95f8319f-bacf-4c79-ab28-76c72a4c8e71 \
+-e -sslprovider commoncrypto -ssltruststore $SECUDIR/sapcli.pse \
+-proxyhost  proxy.org.corp -proxyport 8080  \
+"SELECT VERSION FROM M_DATABASE"
 ```
 
 For the documentation, see
@@ -65,12 +126,11 @@ On Microsoft Windows, use the ODBC Data Source Administrator to create a System 
 
 On Linux and macOS, create a .odbc.ini file in your home directory for User Data Source or /etc (convention, no requirement) for System Data Sources. The order of the parameters does not matter nor does the parameter case. File name case does matter! Tip: verify your entries with the list (ls) command.
 
-Below two example, for Linux and macOS. The extension of the ODBC driver file and the location is different but apart from that, the entries are identical. 
-Storing the PEM file in a .ssl directory under the user account is a convention, not a requirement. THere are no specific file permissions for the directory or file required (unlike for SSH). 
+Below two example, for Linux and macOS. The extension of the ODBC driver file and the location is different but apart from that, the entries are identical. Storing the PEM file in a .ssl directory under the user account is a convention, not a requirement. THere are no specific file permissions for the directory or file required (unlike for SSH). 
 
 You can give the Data Source any name you want. Case is not important, spaces are possible between quotes but not recommended. 
 
-### For Linux
+### For Linux using openSSL
 ```
 [HaaS]
 driver=/usr/sap/hdbclient/libodbcHDB.so
@@ -79,18 +139,17 @@ encrypt=Yes
 sslCryptoProvider=openssl
 sslTrustStore=/usr/sap/hdblcient/.ssl/DigiCertGlobalRootCA.pem
 ```
-### For macOS
+### For macOS using SAPCommonCryptoLib
 ```
 [HaaS]
 driver=/Applications/sap/hdbclient/libodbcHDB.dylib
 serverNode=zeus.hana.prod.eu-central-1.whitney.dbaas.ondemand.com:54321
 encrypt=Yes
-sslCryptoProvider=openssl
-sslTrustStore=/Users/JohnDoe/.ssl/DigiCertGlobalRootCA.pem
+sslCryptoProvider=commoncrypto
+ssltruststore=$SECUDIR/sapcli.pse
 ```
 ### isql
-Test your connection (and enter SQL) with isql. This tool is included with the unixODBC Driver Manager package. 
-You can download unixODBC for Linux and Mac from [unixODBC.org](http://www.unixodbc.org) and admire the beautiful retro early 90s web design. 
+Test your connection (and enter SQL) with isql. This tool is included with the unixODBC Driver Manager package. You can download unixODBC for Linux and Mac from [unixODBC.org](http://www.unixodbc.org) and admire the beautiful retro early 90s web design. 
 Syntax is isql DataSourceName username password. There is no interactive prompt. Not entering a password, returns an error. 
 ```
 isql HaaS user password
@@ -105,14 +164,13 @@ To connect with a JDBC client, you need to install the SAP HANA client for your 
 
 You can test the JDBC connection on the command line. The order of the parameters matters as does the case. 
 
-For the built-in TLS/SSL encryption using Java you do not have to specify the provider or location of a certificate as the CA root certificate of the Java RTE/SDK is used.
-You might need to add the full path to the java executable if it is not in your %PATH% or $PATH. 
+For the built-in TLS/SSL encryption using Java you do not have to specify the provider or location of a certificate as the CA root certificate of the Java RTE/SDK is used. You might need to add the full path to the java executable if it is not in your %PATH% or $PATH. 
 
 ### For macOS
 ```
-java -jar "/Applications/sap/hdbclient/ngdbc.jar" -u user,Password1 
--n zeus.hana.prod.eu-central-1.whitney.dbaas.ondemand.com:54321 
--o encrypt=true -o validateCertificate=true 
+java -jar "/Applications/sap/hdbclient/ngdbc.jar" -u user,Password1 \
+-n zeus.hana.prod.eu-central-1.whitney.dbaas.ondemand.com:54321 \
+-o encrypt=true -o validateCertificate=true \
 -c "SELECT VERSION FROM M_DATABASE"
 ```
 ### For Windows
@@ -122,7 +180,15 @@ java -jar "C:\Program Files\sap\hdbclient\ngdbc.jar" -u user,Password1
 -o encrypt=true -o validateCertificate=true 
 -c "SELECT VERSION FROM M_DATABASE"
 ```
-
+Note that the JRE uses its own DigiCert certificate and SSL provider. 
+```
+echo changeit| "C:\Program Files (x86)\Java\jre1.8.0_201\bin\keytool" -list -v -keystore "C:\Program Files (x86)\Java\jre1.8.0_201\lib\security\cacerts" 
+```
+### Tracing
+For tracing use:
+```
+ java -jar ngdbc.jar -g
+```
 ### For Windows
 Sample code for the TestJDBCDriver class. Add the next-generation database client <strong>ngdbc.jar</strong> file as an external archive to your package build path.
 
@@ -170,8 +236,9 @@ pip install /usr/sap/hdbclient/hdbcli-N.N.N.tar.gz # Linux
 pip install /Applications/sap/hdbclient/hdbcli-N.N.N.tar.gz # macOS
 pip install "C:\Program Files\SAP\hdbclient\hdbcli-N.N.N.zip" # Windows
 ```
-When running your Python code on a Microsoft Windows platform, you only need to set encrypt=true. 
-On macOS and Linux, you also need to specify sslCryptoProvider and sslTrustStore.
+When running your Python code on a Microsoft Windows platform with the default crypto provider, you only need to set encrypt=true. 
+On macOS and Linux, for openSSL, you also need to specify sslCryptoProvider and sslTrustStore. 
+For SAP CryptoLib, use sslCryptoProvider and sslTrustStore as above. 
 ```
 from hdbcli import dbapi
 
@@ -180,9 +247,12 @@ conn = dbapi.connect(
     port=54321, 
     user='cobra', 
     password='MySecret', 
+    # key=KEYNAME, # alternatively, use an HDB User Store Key for username, password (does not replace address, here)
     encrypt='true', 
-    sslCryptoProvider='openssl', 
-    sslTrustStore='/Users/cobra/.ssl/DigiCertGlobalRootCA.pem'
+    # sslCryptoProvider='openssl', 
+    # sslTrustStore='/Users/cobra/.ssl/DigiCertGlobalRootCA.pem'
+    sslCryptoProvider='commoncrypto', 
+    sslTrustStore='$SECUDIR/sapcli.pse'    
 )
 
 with conn.cursor() as cursor:
